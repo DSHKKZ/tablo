@@ -121,36 +121,21 @@
     </div>
 
     <div id="schedule-list">
-        <div class="info-message">Загрузка актуального расписания...</div>
+        <div class="info-message">Загрузка расписания из Google Таблицы...</div>
     </div>
 </div>
 
 <div class="footer-status">
-    <span id="sync-status">Статус: Подключение к Google Таблице...</span>
-    <span>Онлайн-табло v1.2</span>
+    <span id="sync-status">Статус: Подключение к облаку...</span>
+    <span>Онлайн-табло v1.4</span>
 </div>
 
 <script>
-    // ВСТАВЬТЕ СЮДУ ССЫЛКУ НА ВЕБ-ПРИЛОЖЕНИЕ GOOGLE APPS SCRIPT:
-    const webAppUrl = https://script.google.com/macros/s/AKfycbyf4XWP-ZoXe3qqE7D5UeljgfCZxIXYLWGAu8pS8u7wAo1n-x_Oe0M5Vz3vXfnjiIzx/exec;
+    // Ваша ссылка на Google Apps Script жестко прописана здесь:
+    const webAppUrl = 'https://script.google.com/macros/s/AKfycbyf4XWP-ZoXe3qqE7D5UeljgfCZxIXYLWGAu8pS8u7wAo1n-x_Oe0M5Vz3vXfnjiIzx/exec'; 
 
+    // Резервные данные на случай задержки сети
     let scheduleData = [];
-
-    // Функция загрузки данных из Google Таблицы через скрипт
-    async function fetchSchedule() {
-        try {
-            const response = await fetch(webAppUrl + '?t=' + new Date().getTime());
-            const data = await response.json();
-            if (Array.isArray(data) && data.length > 0) {
-                scheduleData = data;
-                document.getElementById('sync-status').innerText = 'Статус: Данные успешно синхронизированы с облаком';
-                updateBoard(); // перерисовываем сразу при получении данных
-            }
-        } catch (error) {
-            console.error('Ошибка загрузки:', error);
-            document.getElementById('sync-status').innerText = 'Статус: Нет связи с сетью, работают автономные данные';
-        }
-    }
 
     function getTodayName() {
         const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
@@ -158,73 +143,100 @@
     }
 
     function updateBoard() {
-        const now = new Date();
-        
-        document.getElementById('current-time').innerText = now.toTimeString().split(' ')[0];
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        document.getElementById('current-date').innerText = now.toLocaleDateString('ru-RU', options);
+        try {
+            const now = new Date();
+            
+            // Обновляем часы каждую секунду
+            document.getElementById('current-time').innerText = now.toTimeString().split(' ')[0];
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date').innerText = now.toLocaleDateString('ru-RU', options);
 
-        const currentDayName = getTodayName();
-        const currentTimeStr = now.toTimeString().substring(0, 5);
+            const currentDayName = getTodayName();
+            const currentTimeStr = now.toTimeString().substring(0, 5);
 
-        if (scheduleData.length === 0) return;
+            const listContainer = document.getElementById('schedule-list');
+            if (!listContainer) return;
 
-        let todaysClasses = scheduleData.filter(item => 
-            item.day && item.day.toString().trim().toLowerCase() === currentDayName.toLowerCase()
-        );
-
-        const listContainer = document.getElementById('schedule-list');
-
-        if (todaysClasses.length === 0) {
-            listContainer.innerHTML = `<div class="info-message">На сегодня (${currentDayName}) занятий по расписанию нет</div>`;
-            return;
-        }
-
-        todaysClasses.sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-
-        let html = '';
-        todaysClasses.forEach(item => {
-            let statusText = '';
-            let statusClass = '';
-            const start = item.start || '00:00';
-            const end = item.end || '00:00';
-
-            if (currentTimeStr < start) {
-                statusText = 'Скоро начнется';
-                statusClass = 'upcoming';
-            } else if (currentTimeStr >= start && currentTimeStr <= end) {
-                statusText = 'Идет занятие';
-                statusClass = 'active';
-            } else {
-                statusText = 'Завершено';
-                statusClass = 'passed';
+            if (scheduleData.length === 0) {
+                return; // Ждем загрузку данных
             }
 
-            html += `
-                <div class="row">
-                    <div>
-                        <div class="circle-name">${item.title || ''}</div>
-                        <div style="font-size: 14px; color: #777788;">${item.group ? 'Группа: ' + item.group : ''}</div>
-                    </div>
-                    <div class="teacher-info">${item.teacher || '—'}</div>
-                    <div class="time-slot">${start} — ${end}</div>
-                    <div><span class="status ${statusClass}">${statusText}</span></div>
-                    <div class="cabinet" style="text-align: right;">${item.cabinet || '—'}</div>
-                </div>
-            `;
-        });
+            // Фильтруем занятия на сегодня
+            let todaysClasses = scheduleData.filter(function(item) {
+                return item.day && item.day.toString().trim().toLowerCase() === currentDayName.toLowerCase();
+            });
 
-        listContainer.innerHTML = html;
+            if (todaysClasses.length === 0) {
+                listContainer.innerHTML = '<div class="info-message">На сегодня (' + currentDayName + ') занятий по расписанию нет</div>';
+                return;
+            }
+
+            // Сортировка по времени начала
+            todaysClasses.sort(function(a, b) {
+                return (a.start || '').localeCompare(b.start || '');
+            });
+
+            let html = '';
+            todaysClasses.forEach(function(item) {
+                let statusText = '';
+                let statusClass = '';
+                const start = item.start || '00:00';
+                const end = item.end || '00:00';
+
+                if (currentTimeStr < start) {
+                    statusText = 'Скоро начнется';
+                    statusClass = 'upcoming';
+                } else if (currentTimeStr >= start && currentTimeStr <= end) {
+                    statusText = 'Идет занятие';
+                    statusClass = 'active';
+                } else {
+                    statusText = 'Завершено';
+                    statusClass = 'passed';
+                }
+
+                html += '<div class="row">' +
+                    '<div>' +
+                        '<div class="circle-name">' + (item.title || '') + '</div>' +
+                        '<div style="font-size: 14px; color: #777788;">' + (item.group ? 'Группа: ' + item.group : '') + '</div>' +
+                    '</div>' +
+                    '<div class="teacher-info">' + (item.teacher || '—') + '</div>' +
+                    '<div class="time-slot">' + start + ' — ' + end + '</div>' +
+                    '<div><span class="status ' + statusClass + '">' + statusText + '</span></div>' +
+                    '<div class="cabinet" style="text-align: right;">' + (item.cabinet || '—') + '</div>' +
+                '</div>';
+            });
+
+            listContainer.innerHTML = html;
+        } catch (err) {
+            console.error("Ошибка рендеринга:", err);
+        }
     }
 
-    // Первичный запрос данных при открытии
-    fetchSchedule();
+    // Загрузка данных из Google Таблицы через ваш скрипт
+    async function fetchScheduleFromCloud() {
+        try {
+            const response = await fetch(webAppUrl + '?t=' + new Date().getTime());
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+                scheduleData = data;
+                document.getElementById('sync-status').innerText = 'Статус: Данные успешно загружены из Google Таблицы';
+                updateBoard();
+            } else {
+                document.getElementById('sync-status').innerText = 'Статус: Таблица пуста или неверный формат';
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки из облака:', error);
+            document.getElementById('sync-status').innerText = 'Статус: Ошибка соединения с таблицей';
+        }
+    }
 
-    // Обновляем данные из Google Таблицы каждые 5 минут
-    setInterval(fetchSchedule, 5 * 60 * 1000);
-
-    // Обновление часов и статусов занятий каждую секунду
+    // Запускаем часы
     setInterval(updateBoard, 1000);
+    updateBoard();
+
+    // Запрашиваем данные из Google Таблицы сразу и каждые 5 минут
+    fetchScheduleFromCloud();
+    setInterval(fetchScheduleFromCloud, 5 * 60 * 1000);
 </script>
 
 </body>
