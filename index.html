@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Онлайн-расписание | Дворец школьников</title>
+    <style>
+        body {
+            background-color: #0d0d11;
+            color: #ffffff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 30px;
+            overflow: hidden;
+        }
+        .board-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #16161c;
+            border: 3px solid #2a2a36;
+            border-radius: 14px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+            padding: 30px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #2a2a36;
+            padding-bottom: 20px;
+            margin-bottom: 25px;
+        }
+        .logo-block h1 {
+            margin: 0;
+            font-size: 30px;
+            color: #f0f0f5;
+        }
+        .logo-block p {
+            margin: 5px 0 0 0;
+            color: #8c8c9e;
+            font-size: 16px;
+        }
+        .datetime {
+            text-align: right;
+        }
+        .date {
+            font-size: 18px;
+            color: #a8a8b3;
+            text-transform: capitalize;
+        }
+        .time {
+            font-size: 46px;
+            font-weight: bold;
+            color: #4bb543;
+            font-family: monospace;
+            letter-spacing: 2px;
+        }
+        .table-header, .row {
+            display: grid;
+            grid-template-columns: 2.5fr 1.5fr 1.5fr 1fr 1.2fr;
+            padding: 15px 20px;
+            align-items: center;
+            border-bottom: 1px solid #22222d;
+        }
+        .table-header {
+            font-weight: bold;
+            color: #8c8c9e;
+            font-size: 16px;
+            text-transform: uppercase;
+        }
+        .row {
+            font-size: 22px;
+            background: #1e1e28;
+            margin-bottom: 12px;
+            border-radius: 8px;
+        }
+        .circle-name { font-weight: 600; color: #ffffff; }
+        .teacher-info { color: #b0b0c0; font-size: 18px; }
+        .time-slot { color: #fba94c; font-family: monospace; font-weight: bold; }
+        .cabinet { color: #4ba3e3; font-weight: bold; }
+        
+        .status { font-size: 16px; padding: 6px 12px; border-radius: 6px; text-align: center; display: inline-block; font-weight: 600;}
+        .status.active { background: rgba(75, 181, 67, 0.2); color: #4bb543; border: 1px solid rgba(75, 181, 67, 0.4); }
+        .status.upcoming { background: rgba(251, 169, 76, 0.2); color: #fba94c; border: 1px solid rgba(251, 169, 76, 0.4); }
+        .status.passed { color: #555566; }
+        
+        .info-message {
+            text-align: center;
+            padding: 50px;
+            font-size: 24px;
+            color: #8c8c9e;
+        }
+        .footer-status {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            color: #555566;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="board-container">
+    <header>
+        <div class="logo-block">
+            <h1>КГКП «Дворец школьников им. М.М. Катаева»</h1>
+            <p>Расписание занятий (Отдел художественного воспитания)</p>
+        </div>
+        <div class="datetime">
+            <div class="date" id="current-date">--.--.----</div>
+            <div class="time" id="current-time">00:00:00</div>
+        </div>
+    </header>
+
+    <div class="table-header">
+        <div>Кружок / Студия</div>
+        <div>Руководитель</div>
+        <div>Время</div>
+        <div>Статус</div>
+        <div style="text-align: right;">Кабинет</div>
+    </div>
+
+    <div id="schedule-list">
+        <div class="info-message">Загрузка актуального расписания...</div>
+    </div>
+</div>
+
+<div class="footer-status">
+    <span id="sync-status">Статус: Подключение к Google Таблице...</span>
+    <span>Онлайн-табло v1.2</span>
+</div>
+
+<script>
+    // ВСТАВЬТЕ СЮДУ ССЫЛКУ НА ВЕБ-ПРИЛОЖЕНИЕ GOOGLE APPS SCRIPT:
+    const webAppUrl = https://script.google.com/macros/s/AKfycbyf4XWP-ZoXe3qqE7D5UeljgfCZxIXYLWGAu8pS8u7wAo1n-x_Oe0M5Vz3vXfnjiIzx/exec;
+
+    let scheduleData = [];
+
+    // Функция загрузки данных из Google Таблицы через скрипт
+    async function fetchSchedule() {
+        try {
+            const response = await fetch(webAppUrl + '?t=' + new Date().getTime());
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+                scheduleData = data;
+                document.getElementById('sync-status').innerText = 'Статус: Данные успешно синхронизированы с облаком';
+                updateBoard(); // перерисовываем сразу при получении данных
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки:', error);
+            document.getElementById('sync-status').innerText = 'Статус: Нет связи с сетью, работают автономные данные';
+        }
+    }
+
+    function getTodayName() {
+        const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+        return days[new Date().getDay()];
+    }
+
+    function updateBoard() {
+        const now = new Date();
+        
+        document.getElementById('current-time').innerText = now.toTimeString().split(' ')[0];
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('current-date').innerText = now.toLocaleDateString('ru-RU', options);
+
+        const currentDayName = getTodayName();
+        const currentTimeStr = now.toTimeString().substring(0, 5);
+
+        if (scheduleData.length === 0) return;
+
+        let todaysClasses = scheduleData.filter(item => 
+            item.day && item.day.toString().trim().toLowerCase() === currentDayName.toLowerCase()
+        );
+
+        const listContainer = document.getElementById('schedule-list');
+
+        if (todaysClasses.length === 0) {
+            listContainer.innerHTML = `<div class="info-message">На сегодня (${currentDayName}) занятий по расписанию нет</div>`;
+            return;
+        }
+
+        todaysClasses.sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+
+        let html = '';
+        todaysClasses.forEach(item => {
+            let statusText = '';
+            let statusClass = '';
+            const start = item.start || '00:00';
+            const end = item.end || '00:00';
+
+            if (currentTimeStr < start) {
+                statusText = 'Скоро начнется';
+                statusClass = 'upcoming';
+            } else if (currentTimeStr >= start && currentTimeStr <= end) {
+                statusText = 'Идет занятие';
+                statusClass = 'active';
+            } else {
+                statusText = 'Завершено';
+                statusClass = 'passed';
+            }
+
+            html += `
+                <div class="row">
+                    <div>
+                        <div class="circle-name">${item.title || ''}</div>
+                        <div style="font-size: 14px; color: #777788;">${item.group ? 'Группа: ' + item.group : ''}</div>
+                    </div>
+                    <div class="teacher-info">${item.teacher || '—'}</div>
+                    <div class="time-slot">${start} — ${end}</div>
+                    <div><span class="status ${statusClass}">${statusText}</span></div>
+                    <div class="cabinet" style="text-align: right;">${item.cabinet || '—'}</div>
+                </div>
+            `;
+        });
+
+        listContainer.innerHTML = html;
+    }
+
+    // Первичный запрос данных при открытии
+    fetchSchedule();
+
+    // Обновляем данные из Google Таблицы каждые 5 минут
+    setInterval(fetchSchedule, 5 * 60 * 1000);
+
+    // Обновление часов и статусов занятий каждую секунду
+    setInterval(updateBoard, 1000);
+</script>
+
+</body>
+</html>
